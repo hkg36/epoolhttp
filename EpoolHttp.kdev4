@@ -1,0 +1,4 @@
+[Project]
+Name=EpoolHttp
+Manager=KDevCMakeManager
+VersionControl=kdevgit
