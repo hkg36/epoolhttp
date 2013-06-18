@@ -1,0 +1,4 @@
+group_creater=true
+selfsite=0.0.0.0:6000
+weight=20
+mastersite=127.0.0.1:6000

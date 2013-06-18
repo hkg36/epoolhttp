@@ -1,0 +1,11 @@
+package DbValue;
+
+message GeoPoint{
+	required int32 id=1;
+	required float lat=2;
+	required float lng=3;
+}
+
+message PointList{
+	repeated GeoPoint points=1;
+}
