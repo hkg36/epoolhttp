@@ -137,7 +137,7 @@ void CBackDb::CreateDbConnect() {
 	try {
 		t_maindb->create(myEnv, 0);
 		t_pointdb->create(myEnv, 0);
-		u_int32_t flags = t_pointdb->get_flags()|DB_DUP;
+		u_int32_t flags=DB_DUP;
 		t_pointdb->set_flags(flags);
 		const u_int32_t dbopenflag = DB_CREATE | DB_MULTIVERSION;
 		t_maindb->open(txn, "maindb.db", "maindb", DB_BTREE, dbopenflag, 0);
@@ -226,7 +226,7 @@ void CBackDb::_ReadAreaPoint(float latmin, float latmax, float lngmin,
 	    GeoPoint gp;
 	    gp.id = ntohl(id_buf);
 	    GeoFun::SplitForGeo(pos,gp.lat,gp.lng);
-	    if(gp.lat>latmin && gp.lat<latmax && gp.lng>lngmin && gp.lng<lngmax)
+	    if( gp.lng>lngmin && gp.lng<lngmax && gp.lat>latmin && gp.lat<latmax)
 	      list.push_back(gp);
 	  }while(dbc.pget(&pkey,&srckey,&srcvalue,DB_NEXT)==0);
 	}
