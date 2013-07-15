@@ -11,20 +11,25 @@
 class CBuffer;
 typedef CIPtr<CBuffer> LPCBUFFER;
 
-class CBuffer:public IPtrBase<CBuffer> {
+class CBuffer:public IPtrBase<CBuffer>
+{
 private:
-	unsigned long long len;
-	CBuffer();
+    unsigned long long len;
+    CBuffer();
 public:
-	unsigned int datalen;
-	int exdata;
+    unsigned int datalen;
+    int exdata;
 private:
-	unsigned char buffer[0];
+    unsigned char buffer[0];
 public:
-	static void operator delete( void * arg );
-	inline unsigned char* Buffer(){return buffer;};
-	inline unsigned int BufLen(){return len;}
-	static LPCBUFFER getBuffer(unsigned int size);
+    static void operator delete ( void* arg );
+    inline unsigned char* Buffer() {
+        return buffer;
+    };
+    inline unsigned int BufLen() {
+        return len;
+    }
+    static LPCBUFFER getBuffer ( unsigned int size );
 };
 
 

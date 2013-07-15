@@ -10,19 +10,20 @@
 #include <stdio.h>
 #include <strings.h>
 
-CBuffer::CBuffer(){
+CBuffer::CBuffer()
+{
 }
 
-LPCBUFFER CBuffer::getBuffer(unsigned int size)
+LPCBUFFER CBuffer::getBuffer ( unsigned int size )
 {
-  int alloc_size=sizeof(CBuffer)+size;
-  char *classbuf=(char*)malloc(alloc_size);
-  bzero(classbuf,sizeof(CBuffer));
-  ((CBuffer*)classbuf)->len=size;
-  return (CBuffer*)classbuf;
+    int alloc_size=sizeof ( CBuffer ) +size;
+    char* classbuf= ( char* ) malloc ( alloc_size );
+    bzero ( classbuf,sizeof ( CBuffer ) );
+    ( ( CBuffer* ) classbuf )->len=size;
+    return ( CBuffer* ) classbuf;
 }
 
-void CBuffer::operator delete( void * arg )
+void CBuffer::operator delete ( void* arg )
 {
-  free(arg);
+    free ( arg );
 }

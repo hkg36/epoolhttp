@@ -6,10 +6,10 @@
 class GeoHttpTask:public HttpTask
 {
 public:
-	GeoHttpTask(int fd,CHttpHost *host);
-	void ProcessRequest();
-	void ProcessGeoPoint(UriSplit &urisplit,CHttpServerResponse &response,std::string &rescontent);
+    GeoHttpTask ( int fd,CHttpHost* host );
+    void ProcessRequest();
+    void ProcessGeoPoint ( UriSplit& urisplit,CHttpServerResponse& response,std::string& rescontent );
 
-	static FileTask *NewGeoHttpTask(int fd,CHttpHost* host);
+    static FileTask* NewGeoHttpTask ( int fd,CHttpHost* host );
 };
 #endif /* HTTPGEODB_H_ */
