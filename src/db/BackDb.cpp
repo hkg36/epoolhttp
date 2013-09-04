@@ -6,6 +6,8 @@
 #include "geofunction.h"
 #include <boost/regex.hpp>
 #include <string.h>
+
+#define USE_REP 0
 void CBackDb::db_errcall_fcn ( const DB_ENV* dbenv, const char* errpfx,
                                const char* msg )
 {
@@ -24,25 +26,6 @@ int get_point_list ( DB* sdbp, // secondary db handle
     if ( pdata->size == 0 ) {
         return DB_DONOTINDEX;
     }
-    /*
-    DbValue::PointList ptlist;
-    if (false == ptlist.ParseFromArray(pdata->data, pdata->size))
-        return DB_DONOTINDEX;
-    DBT* pointlist = (DBT*) malloc(sizeof(DBT) * ptlist.points_size());
-    memset(pointlist, 0, sizeof(DBT) * ptlist.points_size());
-    skey->data = pointlist;
-    skey->size = ptlist.points_size();
-    skey->flags = DB_DBT_MULTIPLE | DB_DBT_APPMALLOC;
-
-    for (int i = 0; i < ptlist.points_size(); i++) {
-        int id = ptlist.points(i).id();
-        int *idtmp = (int*) malloc(sizeof(int));
-        *idtmp = htonl(id);
-        DBT* dbt = pointlist + i;
-        dbt->data = idtmp;
-        dbt->size = sizeof(int);
-        dbt->flags = DB_DBT_APPMALLOC;
-    }*/
     skey->data=malloc ( pdata->size );
     skey->size=pdata->size;
     skey->flags=DB_DBT_APPMALLOC;
@@ -62,7 +45,7 @@ CBackDb::CBackDb() :
                                        DB_INIT_LOG | // Initialize logging
                                        DB_INIT_MPOOL | // Initialize the cache
                                        DB_INIT_TXN | // Initialize transactions
-                                       DB_INIT_REP;
+					(USE_REP?DB_INIT_REP:0);
     ( ( DB_ENV* ) myEnv )->app_private = this;
     myEnv.set_alloc ( malloc, realloc, free );
     myEnv.set_cachesize ( 0, 128 * 1024 * 1024, 0 );
@@ -78,59 +61,62 @@ CBackDb::CBackDb() :
     myEnv.set_thread_count ( 10 );
     myEnv.set_flags ( DB_TXN_NOSYNC, 1 );
     myEnv.set_event_notify ( CBackDb::db_event_callback );
-
-    boost::regex addr_reg ( "(?<host>[^:]*):(?<port>.*)" );
+    
     char dataEnvPath[] = "/tmp/dbtest";
     mkdir ( dataEnvPath, 0777 );
     myEnv.set_data_dir ( dataEnvPath );
-    bool is_group_creator = config["group_creater"] == "true";
-    DB_SITE* dbsite = NULL;
-    std::string addr_str = config["selfsite"];
-    if ( !addr_str.empty() ) {
-        boost::smatch match;
-        if ( boost::regex_match ( addr_str, match, addr_reg ) ) {
-            int port = atoi ( match["port"].str().c_str() );
-            std::string host = match["host"].str();
-            myEnv.repmgr_site ( host.c_str(), port, &dbsite, 0 );
+    if(USE_REP)
+    {
+      boost::regex addr_reg ( "(?<host>[^:]*):(?<port>.*)" );
+      bool is_group_creator = config["group_creater"] == "true";
+      DB_SITE* dbsite = NULL;
+      std::string addr_str = config["selfsite"];
+      if ( !addr_str.empty() ) {
+	  boost::smatch match;
+	  if ( boost::regex_match ( addr_str, match, addr_reg ) ) {
+	      int port = atoi ( match["port"].str().c_str() );
+	      std::string host = match["host"].str();
+	      myEnv.repmgr_site ( host.c_str(), port, &dbsite, 0 );
 
-            dbsite->set_config ( dbsite, DB_LOCAL_SITE, 1 );
-            if ( is_group_creator ) {
-                dbsite->set_config ( dbsite, DB_GROUP_CREATOR, 1 );
-            }
-            dbsite->close ( dbsite );
-            dbsite = NULL;
-            printf ( "configed selfsite\n" );
-        }
+	      dbsite->set_config ( dbsite, DB_LOCAL_SITE, 1 );
+	      if ( is_group_creator ) {
+		  dbsite->set_config ( dbsite, DB_GROUP_CREATOR, 1 );
+	      }
+	      dbsite->close ( dbsite );
+	      dbsite = NULL;
+	      printf ( "configed selfsite\n" );
+	  }
+      }
+      int wight = atoi ( config["wight"].c_str() );
+      printf ( "wight:%d\n", wight );
+      myEnv.rep_set_priority ( wight );
+      myEnv.repmgr_set_ack_policy ( DB_REPMGR_ACKS_ONE_PEER );
+      myEnv.rep_set_timeout ( DB_REP_ACK_TIMEOUT, 100 );
+      myEnv.rep_set_timeout ( DB_REP_ELECTION_TIMEOUT, 5000 );
+      myEnv.rep_set_timeout ( DB_REP_ELECTION_RETRY, 10 * 1000 );
+      myEnv.rep_set_timeout ( DB_REP_CONNECTION_RETRY, 10 * 1000 );
+      myEnv.rep_set_timeout ( DB_REP_HEARTBEAT_SEND, 15 * 1000 );
+      myEnv.rep_set_timeout ( DB_REP_HEARTBEAT_MONITOR, 60 * 1000 );
+      if ( !is_group_creator ) {
+	  addr_str = config["mastersite"];
+	  if ( !addr_str.empty() ) {
+	      boost::smatch match;
+	      if ( boost::regex_match ( addr_str, match, addr_reg ) ) {
+		  int port = atoi ( match["port"].str().c_str() );
+		  std::string host = match["host"].str();
+		  myEnv.repmgr_site ( host.c_str(), port, &dbsite, 0 );
+		  dbsite->set_config ( dbsite, DB_BOOTSTRAP_HELPER, 1 );
+		  dbsite->close ( dbsite );
+		  dbsite = NULL;
+		  printf ( "configed mastersite\n" );
+	      }
+	  }
+      }
     }
-    int wight = atoi ( config["wight"].c_str() );
-    printf ( "wight:%d\n", wight );
-    myEnv.rep_set_priority ( wight );
-    myEnv.repmgr_set_ack_policy ( DB_REPMGR_ACKS_ONE_PEER );
-    myEnv.rep_set_timeout ( DB_REP_ACK_TIMEOUT, 100 );
-    myEnv.rep_set_timeout ( DB_REP_ELECTION_TIMEOUT, 5000 );
-    myEnv.rep_set_timeout ( DB_REP_ELECTION_RETRY, 10 * 1000 );
-    myEnv.rep_set_timeout ( DB_REP_CONNECTION_RETRY, 10 * 1000 );
-    myEnv.rep_set_timeout ( DB_REP_HEARTBEAT_SEND, 15 * 1000 );
-    myEnv.rep_set_timeout ( DB_REP_HEARTBEAT_MONITOR, 60 * 1000 );
-    if ( !is_group_creator ) {
-        addr_str = config["mastersite"];
-        if ( !addr_str.empty() ) {
-            boost::smatch match;
-            if ( boost::regex_match ( addr_str, match, addr_reg ) ) {
-                int port = atoi ( match["port"].str().c_str() );
-                std::string host = match["host"].str();
-                myEnv.repmgr_site ( host.c_str(), port, &dbsite, 0 );
-                dbsite->set_config ( dbsite, DB_BOOTSTRAP_HELPER, 1 );
-                dbsite->close ( dbsite );
-                dbsite = NULL;
-                printf ( "configed mastersite\n" );
-            }
-        }
-    }
-
     try {
         myEnv.open ( dataEnvPath, env_flags, 0 );
-        myEnv.repmgr_start ( 3, DB_REP_ELECTION );
+	if(USE_REP)
+	  myEnv.repmgr_start ( 3, DB_REP_ELECTION );
         CreateDbConnect();
     } catch ( DbException e ) {
         printf ( "error:%s\n", e.what().c_str() );

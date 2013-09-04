@@ -5,6 +5,7 @@
  *      Author: amen
  */
 #include "../tools/stdext.h"
+#include "IOLoop.h"
 #ifndef HTTPSERVER_H_
 #define HTTPSERVER_H_
 #define WriteQueueAdded 0
@@ -107,5 +108,8 @@ private:
     void setnonblock ( int fd );
 
     void closesocket ( int fd );
+    
+    void processListener(int fd);
+    void processClient(int fd,int events);
 };
 #endif /* HTTPSERVER_H_ */

@@ -94,112 +94,15 @@ void CHttpHost::Run ()
         if ( epollres == 0 ) {
 
         } else {
-            bool WriteEnable = false;
             for ( int i = 0; i < epollres; i++ ) {
                 epoll_event nowev = events[i];
-                if ( nowev.events & EPOLLIN ) {
-                    if ( nowev.data.fd == listenfd ) {
-                        for ( ;; ) {
-                            struct sockaddr clientaddr;
-                            socklen_t caddrlen = sizeof ( clientaddr );
-                            int connfd = accept ( listenfd, &clientaddr,
-                                                  &caddrlen );
-                            if ( connfd == -1 ) {
-                                if ( errno != EAGAIN )
-                                    printf ( "accept error %s\n",
-                                             strerror ( errno ) );
-                                break;
-                            } else {
-                                setnonblock ( connfd );
-                                ev.data.fd = connfd;
-                                ev.events = EPOLLIN | EPOLLOUT | EPOLLET;
-                                res =
-                                    epoll_ctl ( epfd, EPOLL_CTL_ADD, connfd, &ev );
-                                if ( res == 0 ) {
-                                    CIPtr < SocketState > state =
-                                        new SocketState ();
-                                    sokectstatesMutex.Lock ();
-                                    socketstates.insert
-                                    ( SocketStates::value_type
-                                      ( connfd, state ) );
-                                    sokectstatesMutex.Unlock ();
-
-                                    writequeuemaplock.Lock ();
-                                    LPWriteQueue writequeue = new WriteQueue ();
-                                    writequeuemap.insert
-                                    ( WriteQueueMap::value_type
-                                      ( connfd, writequeue ) );
-                                    writequeuemaplock.Unlock ();
-
-                                } else {
-                                    closesocket ( connfd );
-                                }
-                            }
-                        }
-                    } else {
-                        CIPtr < SocketState > state;
-                        sokectstatesMutex.Lock ();
-                        SocketStates::iterator nowsocketstate =
-                            socketstates.find ( nowev.data.fd );
-                        if ( nowsocketstate != socketstates.end () ) {
-                            state = nowsocketstate->second;
-                        }
-                        sokectstatesMutex.Unlock ();
-                        bool readsome = false;
-                        while ( true ) {
-                            LPCBUFFER buffer = CBuffer::getBuffer ( 1024 );
-                            int res = read ( nowev.data.fd, buffer->Buffer (),
-                                             buffer->BufLen () );
-                            if ( res == -1 && errno == EAGAIN ) {
-                                break;
-                            } else if ( res == 0 ) {
-                                closesocket ( nowev.data.fd );
-                                nowev.data.fd = -1;
-                                break;
-                            }
-                            if ( state ) {
-                                state->readcount += res;
-                            }
-                            buffer->datalen = res;
-                            buffer->exdata = nowev.data.fd;
-
-                            readdataqueuelock.Lock ();
-                            readdataqueue.push_back ( buffer );
-                            readdataqueuelock.Unlock ();
-                            readsome = true;
-                        }
-                        if ( readsome ) {
-                            readqueueWait.Signal ();
-                        }
-                        if ( state ) {
-                            state->lastread = time ( NULL );
-                        }
-                    }
-                }
-                if ( nowev.events & EPOLLOUT ) {
-                    sokectstatesMutex.Lock ();
-                    SocketStates::iterator nowsocketstate =
-                        socketstates.find ( nowev.data.fd );
-                    if ( nowsocketstate != socketstates.end () ) {
-                        nowsocketstate->second->canwrite = true;
-                        WriteEnable = true;
-                    }
-                    sokectstatesMutex.Unlock ();
-                }
-                if ( nowev.events & EPOLLPRI ) {
-                }
-                if ( nowev.events & EPOLLERR ) {
-                    if ( nowev.data.fd != listenfd ) {
-                        closesocket ( nowev.data.fd );
-                    }
-                }
-                if ( nowev.events & EPOLLHUP ) {
-                    // hand up
-                    closesocket ( nowev.data.fd );
-                }
-            }
-            if ( WriteEnable ) {
-                SocketWriteWait.Signal ();
+		if ( nowev.data.fd == listenfd) {
+		  if(nowev.events & EPOLLIN)
+		    processListener(listenfd);
+		}
+		else{
+		    processClient(nowev.data.fd,nowev.events);
+		}
             }
         }
     }
@@ -215,7 +118,112 @@ void CHttpHost::Run ()
     pthread_join ( writeWorkID, NULL );
     running = false;
 }
+void CHttpHost::processListener(int listenfd)
+{
+  for ( ;; ) {
+	struct sockaddr clientaddr;
+	socklen_t caddrlen = sizeof ( clientaddr );
+	int connfd = accept ( listenfd, &clientaddr,
+			      &caddrlen );
+	if ( connfd == -1 ) {
+	    if ( errno != EAGAIN )
+		printf ( "accept error %s\n",
+			strerror ( errno ) );
+	    break;
+	} else {
+	    setnonblock ( connfd );
+	    epoll_event ev;
+	    ev.data.fd = connfd;
+	    ev.events = EPOLLIN | EPOLLOUT | EPOLLET;
+	    int res =
+		epoll_ctl ( epfd, EPOLL_CTL_ADD, connfd, &ev );
+	    if ( res == 0 ) {
+		CIPtr < SocketState > state =
+		    new SocketState ();
+		sokectstatesMutex.Lock ();
+		socketstates.insert
+		( SocketStates::value_type
+		  ( connfd, state ) );
+		sokectstatesMutex.Unlock ();
 
+		writequeuemaplock.Lock ();
+		LPWriteQueue writequeue = new WriteQueue ();
+		writequeuemap.insert
+		( WriteQueueMap::value_type
+		  ( connfd, writequeue ) );
+		writequeuemaplock.Unlock ();
+
+	    } else {
+		closesocket ( connfd );
+	    }
+	}
+    }
+}
+void CHttpHost::processClient(int fd,int events)
+{
+  bool WriteEnable = false;
+  if ( events & EPOLLIN ) {
+	CIPtr < SocketState > state;
+	sokectstatesMutex.Lock ();
+	SocketStates::iterator nowsocketstate =
+	    socketstates.find ( fd );
+	if ( nowsocketstate != socketstates.end () ) {
+	    state = nowsocketstate->second;
+	}
+	sokectstatesMutex.Unlock ();
+	bool readsome = false;
+	while ( true ) {
+	    LPCBUFFER buffer = CBuffer::getBuffer ( 1024 );
+	    int res = read ( fd, buffer->Buffer (),
+			      buffer->BufLen () );
+	    if ( res == -1 && errno == EAGAIN ) {
+		break;
+	    } else if ( res == 0 ) {
+		closesocket ( fd );
+		fd = -1;
+		break;
+	    }
+	    if ( state ) {
+		state->readcount += res;
+	    }
+	    buffer->datalen = res;
+	    buffer->exdata = fd;
+
+	    readdataqueuelock.Lock ();
+	    readdataqueue.push_back ( buffer );
+	    readdataqueuelock.Unlock ();
+	    readsome = true;
+	}
+	if ( readsome ) {
+	    readqueueWait.Signal ();
+	}
+	if ( state ) {
+	    state->lastread = time ( NULL );
+	}
+    }
+    if (events & EPOLLOUT ) {
+	sokectstatesMutex.Lock ();
+	SocketStates::iterator nowsocketstate =
+	    socketstates.find ( fd );
+	if ( nowsocketstate != socketstates.end () ) {
+	    nowsocketstate->second->canwrite = true;
+	    WriteEnable = true;
+	}
+	sokectstatesMutex.Unlock ();
+    }
+    if ( events & EPOLLPRI ) {
+    }
+    if ( events & EPOLLERR ) {
+	closesocket ( fd );
+    }
+    if ( events & EPOLLHUP ) {
+	// hand up
+	closesocket ( fd );
+    }
+    if ( WriteEnable ) {
+    SocketWriteWait.Signal ();
+    }
+}
 void* CHttpHost::_writeSocketThread ( void* obj )
 {
     CHttpHost* server = ( CHttpHost* ) obj;
@@ -304,6 +312,7 @@ void CHttpHost::processthread ()
             AutoMyMutexLock al2 ( procFileLock );
             std::list < LPCBUFFER >::iterator walker = readdataqueue.begin ();
             while ( walker != readdataqueue.end () ) {
+	      //线程同步，防止多个线程处理同一个filetask
                 if ( processingFile.end () ==
                         processingFile.find ( ( *walker )->exdata ) ) {
                     buffer = *walker;
