@@ -15,22 +15,32 @@
 CHttpHost::CHttpHost ( unsigned short port ) :
     port ( port ),
     running ( false ),
-    CreateFileTaskFunction ( NULL ),
-    epfd ( 0 )
+    CreateFileTaskFunction ( NULL )
 {
+  
 }
 
 void CHttpHost::Stop ()
 {
     running = false;
 }
-
+int ListenerCallBack(IOLoop* looper,long userdata,int fd,int event)
+{
+  ((CHttpHost*)userdata)->processListener(looper,fd);
+}
+int IdelCallBack(IOLoop* looper,long userdata,int fd,int event)
+{
+  ((CHttpHost*)userdata)->idelProcess();
+}
+int ClientCallBack(IOLoop* looper,long userdata,int fd,int event)
+{
+  ((CHttpHost*)userdata)->processClient(looper,fd,event);
+}
 void CHttpHost::Run ()
 {
     assert ( CreateFileTaskFunction );
     int res = 0;
     epoll_event ev, events[20];
-    epfd = epoll_create ( 256 );
 
     struct sockaddr_in serveraddr;
     bzero ( &serveraddr, sizeof ( serveraddr ) );
@@ -42,9 +52,9 @@ void CHttpHost::Run ()
     setnonblock ( listenfd );
     int opt = 1;
     setsockopt ( listenfd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof ( opt ) );
-    ev.data.fd = listenfd;
-    ev.events = EPOLLIN | EPOLLET;
-    res = epoll_ctl ( epfd, EPOLL_CTL_ADD, listenfd, &ev );
+    //ev.data.fd = listenfd;
+    //ev.events = EPOLLIN | EPOLLET;
+    ioloop.AddFD(listenfd,ListenerCallBack,EPOLLIN,(unsigned long)this);
     res = bind ( listenfd, ( sockaddr* ) & serveraddr, sizeof ( serveraddr ) );
     if ( res == -1 ) {
         printf ( "bind error %s\n", strerror ( errno ) );
@@ -69,44 +79,13 @@ void CHttpHost::Run ()
 
     int flgs = fcntl ( 0, F_GETFL );
     fcntl ( 0, F_SETFL, flgs | O_NONBLOCK );
+    
+    ioloop.AddIdelCallback(IdelCallBack,(unsigned long)this);
     while ( running ) {
-        int epollres = epoll_wait ( epfd, events, 20, -1 );
-        if ( epollres == -1 ) {
-            int count = 0;
-            writequeuemaplock.Lock ();
-            for ( std::map < int, LPWriteQueue >::iterator i =
-                        writequeuemap.begin (); i != writequeuemap.end (); i++ ) {
-                count += i->second->size ();
-            }
-            writequeuemaplock.Unlock ();
-            printf ( "write queue left:%d\n", count );
-
-            count = 0;
-            readdataqueuelock.Lock ();
-            for ( std::list < LPCBUFFER >::iterator i =
-                        readdataqueue.begin (); i != readdataqueue.end (); i++ ) {
-                count++;
-            }
-            readdataqueuelock.Unlock ();
-            printf ( "read queue left:%d\n", count );
-            continue;
-        }
-        if ( epollres == 0 ) {
-
-        } else {
-            for ( int i = 0; i < epollres; i++ ) {
-                epoll_event nowev = events[i];
-		if ( nowev.data.fd == listenfd) {
-		  if(nowev.events & EPOLLIN)
-		    processListener(listenfd);
-		}
-		else{
-		    processClient(nowev.data.fd,nowev.events);
-		}
-            }
-        }
+        ioloop.run_once();
     }
-
+    ioloop.DelIdelCallback(IdelCallBack);
+    ioloop.DelFD(listenfd);
     if ( listenfd != -1 ) {
         close ( listenfd );
     }
@@ -118,7 +97,27 @@ void CHttpHost::Run ()
     pthread_join ( writeWorkID, NULL );
     running = false;
 }
-void CHttpHost::processListener(int listenfd)
+void CHttpHost::idelProcess()
+{
+  int count = 0;
+  writequeuemaplock.Lock ();
+  for ( std::map < int, LPWriteQueue >::iterator i =
+	      writequeuemap.begin (); i != writequeuemap.end (); i++ ) {
+      count += i->second->size ();
+  }
+  writequeuemaplock.Unlock ();
+  printf ( "write queue left:%d\n", count );
+
+  count = 0;
+  readdataqueuelock.Lock ();
+  for ( std::list < LPCBUFFER >::iterator i =
+	      readdataqueue.begin (); i != readdataqueue.end (); i++ ) {
+      count++;
+  }
+  readdataqueuelock.Unlock ();
+  printf ( "read queue left:%d\n", count );
+}
+void CHttpHost::processListener(IOLoop* looper,int listenfd)
 {
   for ( ;; ) {
 	struct sockaddr clientaddr;
@@ -135,8 +134,7 @@ void CHttpHost::processListener(int listenfd)
 	    epoll_event ev;
 	    ev.data.fd = connfd;
 	    ev.events = EPOLLIN | EPOLLOUT | EPOLLET;
-	    int res =
-		epoll_ctl ( epfd, EPOLL_CTL_ADD, connfd, &ev );
+	    int res = looper->AddFD(connfd,ClientCallBack,EPOLLIN|EPOLLOUT,(unsigned long)this);
 	    if ( res == 0 ) {
 		CIPtr < SocketState > state =
 		    new SocketState ();
@@ -159,10 +157,10 @@ void CHttpHost::processListener(int listenfd)
 	}
     }
 }
-void CHttpHost::processClient(int fd,int events)
+void CHttpHost::processClient(IOLoop* looper,int fd,int events)
 {
   bool WriteEnable = false;
-  if ( events & EPOLLIN ) {
+  if ( events & EPOLLIN  ) {
 	CIPtr < SocketState > state;
 	sokectstatesMutex.Lock ();
 	SocketStates::iterator nowsocketstate =
@@ -373,7 +371,7 @@ void CHttpHost::closesocket ( int fd )
     epoll_event ev;
     ev.data.fd = fd;
     ev.events = 0;
-    epoll_ctl ( epfd, EPOLL_CTL_DEL, fd, &ev );
+    ioloop.DelFD(fd);
     sokectstatesMutex.Lock ();
     socketstates.erase ( fd );
     sokectstatesMutex.Unlock ();

@@ -7,7 +7,6 @@
 #include <boost/regex.hpp>
 #include <string.h>
 
-#define USE_REP 0
 void CBackDb::db_errcall_fcn ( const DB_ENV* dbenv, const char* errpfx,
                                const char* msg )
 {
@@ -45,7 +44,7 @@ CBackDb::CBackDb() :
                                        DB_INIT_LOG | // Initialize logging
                                        DB_INIT_MPOOL | // Initialize the cache
                                        DB_INIT_TXN | // Initialize transactions
-					(USE_REP?DB_INIT_REP:0);
+					DB_INIT_REP;
     ( ( DB_ENV* ) myEnv )->app_private = this;
     myEnv.set_alloc ( malloc, realloc, free );
     myEnv.set_cachesize ( 0, 128 * 1024 * 1024, 0 );
@@ -65,8 +64,7 @@ CBackDb::CBackDb() :
     char dataEnvPath[] = "/tmp/dbtest";
     mkdir ( dataEnvPath, 0777 );
     myEnv.set_data_dir ( dataEnvPath );
-    if(USE_REP)
-    {
+    
       boost::regex addr_reg ( "(?<host>[^:]*):(?<port>.*)" );
       bool is_group_creator = config["group_creater"] == "true";
       DB_SITE* dbsite = NULL;
@@ -112,10 +110,10 @@ CBackDb::CBackDb() :
 	      }
 	  }
       }
-    }
+    
     try {
         myEnv.open ( dataEnvPath, env_flags, 0 );
-	if(USE_REP)
+	
 	  myEnv.repmgr_start ( 3, DB_REP_ELECTION );
         CreateDbConnect();
     } catch ( DbException e ) {

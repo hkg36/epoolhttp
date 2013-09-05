@@ -10,20 +10,18 @@ public:
 private:
   struct ioinfo
   {
-    long userdata;
+    unsigned long userdata;
     io_callback callback;
   };
   int epfd;
   std::map<int,ioinfo> fdmap;
   std::vector<ioinfo> idelcallback;
 public:
-  static const int EVENT_READ=EPOLLOUT;
-  static const int EVENT_WRITE=EPOLLIN;
   IOLoop();
   ~IOLoop();
-  int AddFD(int fd,io_callback callback,int events,long userdata=0);
+  int AddFD(int fd,io_callback callback,int events,unsigned long userdata=0);
   int DelFD(int fd);
-  int AddIdelCallback(io_callback callback,long userdata=0);
+  int AddIdelCallback(io_callback callback,unsigned long userdata=0);
   int DelIdelCallback(io_callback callback);
   int run_once();
 };

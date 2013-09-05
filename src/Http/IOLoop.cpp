@@ -9,7 +9,7 @@ IOLoop::~IOLoop()
   close(epfd);
 }
 
-int IOLoop::AddFD(int fd,io_callback callback,int events,long userdata)
+int IOLoop::AddFD(int fd,io_callback callback,int events,unsigned long userdata)
 {
   if(fdmap.find(fd)!=fdmap.end())
     return 100;
@@ -34,7 +34,7 @@ int IOLoop::DelFD(int fd)
   epoll_ctl ( epfd, EPOLL_CTL_DEL, fd, &ev );
   fdmap.erase(fd);
 }
-int IOLoop::AddIdelCallback(io_callback callback,long userdata)
+int IOLoop::AddIdelCallback(io_callback callback,unsigned long userdata)
 {
   for(size_t i=0;i<idelcallback.size();i++)
   {
