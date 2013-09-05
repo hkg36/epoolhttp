@@ -1,5 +1,10 @@
 #include "IOLoop.h"
 #include <unistd.h>
+IOLoop& IOLoop::instanse()
+{
+  static IOLoop looper;
+  return looper;
+}
 IOLoop::IOLoop()
 {
   epfd = epoll_create ( 256 );
@@ -67,7 +72,7 @@ int IOLoop::run_once()
   {
     for(auto i=idelcallback.begin();i!=idelcallback.end();i++)
     {
-      i->callback(this,i->userdata,0,0);
+      i->callback(i->userdata,0,0);
     }
   }
   else
@@ -77,7 +82,7 @@ int IOLoop::run_once()
       std::map<int,ioinfo>::iterator pos= fdmap.find(nowev.data.fd);
       if(pos!=fdmap.end())
       {
-	pos->second.callback(this,pos->second.userdata,nowev.data.fd,nowev.events);
+	pos->second.callback(pos->second.userdata,nowev.data.fd,nowev.events);
       }
     }
   }

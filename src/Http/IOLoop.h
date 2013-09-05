@@ -6,7 +6,7 @@
 class IOLoop
 {
 public:
-  typedef int (*io_callback)(IOLoop* looper,long userdata,int fd,int event);
+  typedef int (*io_callback)(long userdata,int fd,int event);
 private:
   struct ioinfo
   {
@@ -16,9 +16,10 @@ private:
   int epfd;
   std::map<int,ioinfo> fdmap;
   std::vector<ioinfo> idelcallback;
-public:
   IOLoop();
   ~IOLoop();
+public:
+  static IOLoop& instanse();
   int AddFD(int fd,io_callback callback,int events,unsigned long userdata=0);
   int DelFD(int fd);
   int AddIdelCallback(io_callback callback,unsigned long userdata=0);

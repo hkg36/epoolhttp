@@ -24,17 +24,17 @@ void CHttpHost::Stop ()
 {
     running = false;
 }
-int ListenerCallBack(IOLoop* looper,long userdata,int fd,int event)
+int ListenerCallBack(long userdata,int fd,int event)
 {
-  ((CHttpHost*)userdata)->processListener(looper,fd);
+  ((CHttpHost*)userdata)->processListener(fd);
 }
-int IdelCallBack(IOLoop* looper,long userdata,int fd,int event)
+int IdelCallBack(long userdata,int fd,int event)
 {
   ((CHttpHost*)userdata)->idelProcess();
 }
-int ClientCallBack(IOLoop* looper,long userdata,int fd,int event)
+int ClientCallBack(long userdata,int fd,int event)
 {
-  ((CHttpHost*)userdata)->processClient(looper,fd,event);
+  ((CHttpHost*)userdata)->processClient(fd,event);
 }
 void CHttpHost::Run ()
 {
@@ -54,7 +54,7 @@ void CHttpHost::Run ()
     setsockopt ( listenfd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof ( opt ) );
     //ev.data.fd = listenfd;
     //ev.events = EPOLLIN | EPOLLET;
-    ioloop.AddFD(listenfd,ListenerCallBack,EPOLLIN,(unsigned long)this);
+    IOLoop::instanse().AddFD(listenfd,ListenerCallBack,EPOLLIN,(unsigned long)this);
     res = bind ( listenfd, ( sockaddr* ) & serveraddr, sizeof ( serveraddr ) );
     if ( res == -1 ) {
         printf ( "bind error %s\n", strerror ( errno ) );
@@ -80,12 +80,12 @@ void CHttpHost::Run ()
     int flgs = fcntl ( 0, F_GETFL );
     fcntl ( 0, F_SETFL, flgs | O_NONBLOCK );
     
-    ioloop.AddIdelCallback(IdelCallBack,(unsigned long)this);
+    IOLoop::instanse().AddIdelCallback(IdelCallBack,(unsigned long)this);
     while ( running ) {
-        ioloop.run_once();
+        IOLoop::instanse().run_once();
     }
-    ioloop.DelIdelCallback(IdelCallBack);
-    ioloop.DelFD(listenfd);
+    IOLoop::instanse().DelIdelCallback(IdelCallBack);
+    IOLoop::instanse().DelFD(listenfd);
     if ( listenfd != -1 ) {
         close ( listenfd );
     }
@@ -117,7 +117,7 @@ void CHttpHost::idelProcess()
   readdataqueuelock.Unlock ();
   printf ( "read queue left:%d\n", count );
 }
-void CHttpHost::processListener(IOLoop* looper,int listenfd)
+void CHttpHost::processListener(int listenfd)
 {
   for ( ;; ) {
 	struct sockaddr clientaddr;
@@ -134,7 +134,7 @@ void CHttpHost::processListener(IOLoop* looper,int listenfd)
 	    epoll_event ev;
 	    ev.data.fd = connfd;
 	    ev.events = EPOLLIN | EPOLLOUT | EPOLLET;
-	    int res = looper->AddFD(connfd,ClientCallBack,EPOLLIN|EPOLLOUT,(unsigned long)this);
+	    int res = IOLoop::instanse().AddFD(connfd,ClientCallBack,EPOLLIN|EPOLLOUT,(unsigned long)this);
 	    if ( res == 0 ) {
 		CIPtr < SocketState > state =
 		    new SocketState ();
@@ -157,7 +157,7 @@ void CHttpHost::processListener(IOLoop* looper,int listenfd)
 	}
     }
 }
-void CHttpHost::processClient(IOLoop* looper,int fd,int events)
+void CHttpHost::processClient(int fd,int events)
 {
   bool WriteEnable = false;
   if ( events & EPOLLIN  ) {
@@ -178,7 +178,6 @@ void CHttpHost::processClient(IOLoop* looper,int fd,int events)
 		break;
 	    } else if ( res == 0 ) {
 		closesocket ( fd );
-		fd = -1;
 		break;
 	    }
 	    if ( state ) {
@@ -371,7 +370,7 @@ void CHttpHost::closesocket ( int fd )
     epoll_event ev;
     ev.data.fd = fd;
     ev.events = 0;
-    ioloop.DelFD(fd);
+    IOLoop::instanse().DelFD(fd);
     sokectstatesMutex.Lock ();
     socketstates.erase ( fd );
     sokectstatesMutex.Unlock ();

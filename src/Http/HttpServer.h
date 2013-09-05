@@ -95,8 +95,6 @@ private:
     std::set<int> processingFile;
     MyMutex procFileLock;
 
-    IOLoop ioloop;
-
     typedef std::map<int, CIPtr<SocketState> > SocketStates;
     SocketStates socketstates;
     MyMutex sokectstatesMutex;
@@ -109,8 +107,8 @@ private:
 
     void closesocket ( int fd );
 public:
-    void processListener(IOLoop* looper,int fd);
-    void processClient(IOLoop* looper,int fd,int events);
+    void processListener(int fd);
+    void processClient(int fd,int events);
     void idelProcess();
 };
 #endif /* HTTPSERVER_H_ */
